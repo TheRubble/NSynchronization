@@ -12,7 +12,7 @@ namespace NSynchronization.UnitTests
         private ManualResetEvent resetEvent = new ManualResetEvent(false);
         
         [Fact]
-        public void Should_Cancel_Workload()
+        public async Task Should_Cancel_Workload()
         {
             // Arrange
             var cancellationTokenSource = new CancellationTokenSource();
