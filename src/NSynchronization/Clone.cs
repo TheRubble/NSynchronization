@@ -30,7 +30,7 @@ namespace NSynchronization
             if (typeToReflect.IsArray)
             {
                 var arrayType = typeToReflect.GetElementType();
-                if (IsPrimitive(arrayType) == false)
+                if (!IsPrimitive(arrayType))
                 {
                     Array clonedArray = (Array)cloneObject;
                     clonedArray.ForEach((array, indices) => array.SetValue(InternalCopy(clonedArray.GetValue(indices), visited), indices));
@@ -56,7 +56,7 @@ namespace NSynchronization
         {
             foreach (FieldInfo fieldInfo in typeToReflect.GetFields(bindingFlags))
             {
-                if (filter != null && filter(fieldInfo) == false) continue;
+                if (filter != null && !filter(fieldInfo)) continue;
                 if (IsPrimitive(fieldInfo.FieldType)) continue;
                 var originalFieldValue = fieldInfo.GetValue(originalObject);
                 var clonedFieldValue = InternalCopy(originalFieldValue, visited);
@@ -98,7 +98,7 @@ namespace NSynchronization
         internal class ArrayTraverse
         {
             public int[] Position;
-            private int[] maxLengths;
+            private readonly int[] maxLengths;
 
             public ArrayTraverse(Array array)
             {
