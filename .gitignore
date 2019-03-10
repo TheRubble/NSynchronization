@@ -346,3 +346,7 @@ healthchecksdb
 
 /coveragereport
 **/*.cobertura.xml
+
+# Ncrunch
+**/*.ncrunchproject
+**/*.ncrunchsolution
