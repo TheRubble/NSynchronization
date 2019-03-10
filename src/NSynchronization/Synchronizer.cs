@@ -10,29 +10,30 @@ namespace NSynchronization
     {
         private readonly object lockObject = new object();
         
-        private readonly ConcurrentDictionary<string, ConcurrentBag<TaskCompletionSource<T>>> registeredWorkItems
-            = new ConcurrentDictionary<string, ConcurrentBag<TaskCompletionSource<T>>>();
+        private readonly 
+            ConcurrentDictionary<string, ConcurrentBag<(CancellationTokenRegistration tokenRegistration, TaskCompletionSource<T> completionSource)>> registeredWorkItems
+            = new ConcurrentDictionary<string, ConcurrentBag<(CancellationTokenRegistration, TaskCompletionSource<T>)>>();
 
         public Task<T> ExecuteOrJoinCurrentRunning(string identifier, Func<Task<T>> workload, CancellationToken cancellationToken = default)
         {
             var completionSource = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
             
             /* Register to the calling token so the task completion source token can be cancelled DISPOSE ME */
-            cancellationToken.Register(() =>
+            var registration = cancellationToken.Register(() =>
             {
                 completionSource.TrySetCanceled(cancellationToken);
             });
             
             lock (this.lockObject)
             {
-                if (this.registeredWorkItems.TryAdd(identifier, new ConcurrentBag<TaskCompletionSource<T>>()))
+                if (this.registeredWorkItems.TryAdd(identifier, new ConcurrentBag<(CancellationTokenRegistration, TaskCompletionSource<T>)>()))
                 {
-                    this.registeredWorkItems[identifier].Add(completionSource);
+                    this.registeredWorkItems[identifier].Add((registration, completionSource));
                     this.RunWorkloadOnThreadPool(identifier, workload);
                 }
                 else
                 {
-                    this.registeredWorkItems[identifier].Add(completionSource);
+                    this.registeredWorkItems[identifier].Add((registration, completionSource));
                 }
                 return completionSource.Task;
             }
@@ -54,7 +55,7 @@ namespace NSynchronization
                     ex = e;
                 }
 
-                ConcurrentBag<TaskCompletionSource<T>> observingConsumers;
+                ConcurrentBag<(CancellationTokenRegistration tr, TaskCompletionSource<T> ts)> observingConsumers;
                 lock (this.lockObject)
                 {
                     this.registeredWorkItems.TryRemove(identifier, out observingConsumers);
@@ -66,15 +67,16 @@ namespace NSynchronization
                     Console.WriteLine("I'm a stream");
                 }
 
-                foreach (var taskCompletion in observingConsumers)
+                foreach (var consumer in observingConsumers)
                 {
                     if (ex != null)
                     {
-                        taskCompletion.TrySetException(ex.Copy());
+                        consumer.ts.TrySetException(ex.Copy());
                     }
                     else
                     {
-                        taskCompletion.TrySetResult(workloadResult.Copy());
+                        consumer.tr.Dispose();
+                        consumer.ts.TrySetResult(workloadResult.Copy());
                     }
                 }
             });
@@ -88,7 +90,8 @@ namespace NSynchronization
                 {
                     foreach (var observer in workItems.Value)
                     {
-                        observer.TrySetCanceled();
+                        observer.tokenRegistration.Dispose();
+                        observer.completionSource.TrySetCanceled();
                     }
                 }
             }
